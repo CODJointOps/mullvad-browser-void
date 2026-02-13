@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  validate-template:
+    name: Validate Template
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate architecture policy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          archs="$(sed -n 's/^archs=\"\(.*\)\"$/\1/p' template)"
+          if [ "${archs}" != "x86_64*" ]; then
+            echo "archs must remain x86_64* until upstream ships Linux builds for other CPU architectures."
+            echo "Current archs: ${archs}"
+            exit 1
+          fi
+
+          distfile="$(sed -n 's/^distfiles=\"\(.*\)\"$/\1/p' template)"
+          case "${distfile}" in
+            *mullvad-browser-linux-x86_64-*.tar.xz) ;;
+            *)
+              echo "distfiles must target the Linux x86_64 tarball."
+              echo "Current distfiles: ${distfile}"
+              exit 1
+              ;;
+          esac
+
+      - name: Verify distfile checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          source template
+          curl -L --fail --retry 3 --retry-delay 2 -o mullvad-browser.tar.xz "${distfiles}"
+          echo "${checksum}  mullvad-browser.tar.xz" | sha256sum -c -
