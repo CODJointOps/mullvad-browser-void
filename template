@@ -1,8 +1,8 @@
 # Template file for 'mullvad-browser'
 pkgname=mullvad-browser
 version=15.0.4
-revision=1
-archs="x86_64"
+revision=3
+archs="x86_64* aarch64*"
 nopie=yes
 nostrip=yes
 hostmakedepends="curl xz"
