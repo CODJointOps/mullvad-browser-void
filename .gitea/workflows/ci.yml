@@ -5,10 +5,18 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+  schedule:
+    - cron: "23 12 * * *"
+
+concurrency:
+  group: mullvad-browser-template-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate-template:
     name: Validate Template
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,3 +51,106 @@ jobs:
           source template
           curl -L --fail --retry 3 --retry-delay 2 -o mullvad-browser.tar.xz "${distfiles}"
           echo "${checksum}  mullvad-browser.tar.xz" | sha256sum -c -
+
+  auto-update-template:
+    name: Auto Update Template
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y curl jq
+
+      - name: Fetch latest Mullvad release
+        id: get_release
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          releases="$(curl -fsSL https://api.github.com/repos/mullvad/mullvad-browser/releases?per_page=50)"
+          latest_release="$(echo "${releases}" | jq -c '[.[] | select(.draft == false and .prerelease == false)] | sort_by(.published_at) | last')"
+
+          if [ -z "${latest_release}" ] || [ "${latest_release}" = "null" ]; then
+            echo "No stable release found"
+            exit 0
+          fi
+
+          asset_name="$(echo "${latest_release}" | jq -r '.assets[]? | select(.name | test("^mullvad-browser-linux-x86_64-.*\\.tar\\.xz$")) | .name' | head -n1)"
+          asset_url="$(echo "${latest_release}" | jq -r --arg n "${asset_name}" '.assets[]? | select(.name == $n) | .browser_download_url' | head -n1)"
+
+          if [ -z "${asset_name}" ] || [ "${asset_name}" = "null" ] || [ -z "${asset_url}" ] || [ "${asset_url}" = "null" ]; then
+            echo "No Linux x86_64 tarball found in latest release"
+            exit 0
+          fi
+
+          version="$(echo "${asset_name}" | sed -E 's/^mullvad-browser-linux-x86_64-(.+)\.tar\.xz$/\1/')"
+
+          if [ -z "${version}" ]; then
+            echo "Unable to parse version from asset name: ${asset_name}"
+            exit 1
+          fi
+
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "asset_url=${asset_url}" >> "${GITHUB_OUTPUT}"
+
+      - name: Read current template version
+        if: steps.get_release.outputs.version
+        id: current
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_version="$(sed -n 's/^version=\(.*\)$/\1/p' template)"
+          echo "version=${current_version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download release and compute checksum
+        if: steps.get_release.outputs.version && steps.get_release.outputs.version != steps.current.outputs.version
+        id: checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 --retry-delay 2 -o mullvad-browser.tar.xz "${{ steps.get_release.outputs.asset_url }}"
+          sha="$(sha256sum mullvad-browser.tar.xz | awk '{print $1}')"
+          echo "sha256=${sha}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update template
+        if: steps.get_release.outputs.version && steps.get_release.outputs.version != steps.current.outputs.version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ steps.get_release.outputs.version }}"
+          asset_url="${{ steps.get_release.outputs.asset_url }}"
+          checksum="${{ steps.checksum.outputs.sha256 }}"
+
+          awk -v v="${version}" -v d="${asset_url}" -v c="${checksum}" '
+            /^version=/ { print "version=" v; next }
+            /^revision=/ { print "revision=1"; next }
+            /^distfiles=/ { print "distfiles=\"" d "\""; next }
+            /^checksum=/ { print "checksum=" c; next }
+            { print }
+          ' template > template.new
+          mv template.new template
+
+      - name: Commit and push
+        if: steps.get_release.outputs.version && steps.get_release.outputs.version != steps.current.outputs.version
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Wizzard"
+          git config user.email "rich@bandaholics.cash"
+          git add template
+          if git diff --cached --quiet; then
+            echo "No template changes to commit"
+            exit 0
+          fi
+          git commit -m "Update to v${{ steps.get_release.outputs.version }} [auto]"
+          git pull --rebase origin main
+          git push origin HEAD:main
