@@ -76,7 +76,7 @@ jobs:
           set -euo pipefail
 
           releases="$(curl -fsSL https://api.github.com/repos/mullvad/mullvad-browser/releases?per_page=50)"
-          latest_release="$(echo "${releases}" | jq -c '[.[] | select(.draft == false and .prerelease == false)] | sort_by(.published_at) | last')"
+          latest_release="$(echo "${releases}" | jq -c '[.[] | select(.draft == false and .prerelease == false)] | sort_by((.tag_name | sub("^[^0-9]*";"") | split("-") | .[0] | [scan("[0-9]+")] | map(tonumber)), (.tag_name | sub("^[^0-9]*";"") | split("-") | .[1:] | join(".") | [scan("[0-9]+")] | map(tonumber)), .published_at) | last')"
 
           if [ -z "${latest_release}" ] || [ "${latest_release}" = "null" ]; then
             echo "No stable release found"
