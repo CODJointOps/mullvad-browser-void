@@ -1,6 +1,6 @@
 # Template file for 'mullvad-browser'
 pkgname=mullvad-browser
-version=16.0.2
+version=16.0.3
 revision=1
 # Upstream release artifacts currently provide Linux binaries only for x86_64.
 archs="x86_64"
@@ -13,8 +13,8 @@ maintainer="rich@bandaholics.cash"
 license="MPL-2.0"
 homepage="https://mullvad.net/browser"
 changelog="https://github.com/mullvad/mullvad-browser/releases"
-distfiles="https://github.com/mullvad/mullvad-browser/releases/download/16.0.2/mullvad-browser-linux-x86_64-16.0.2.tar.xz"
-checksum=c03bea00314eb3446280ca851f71a763b00c7c0d1dd47d425d0495063ae6c9fe
+distfiles="https://github.com/mullvad/mullvad-browser/releases/download/16.0.3/mullvad-browser-linux-x86_64-16.0.3.tar.xz"
+checksum=73deadb98edae3ca88d6607681bd904e9cba61efd429386970e2ee5749f86bed
 
 do_install() {
 	vmkdir opt/${pkgname}
