@@ -80,7 +80,7 @@ jobs:
 
           if [ -z "${latest_release}" ] || [ "${latest_release}" = "null" ]; then
             echo "No stable release found"
-            exit 0
+            exit 1
           fi
 
           asset_name="$(echo "${latest_release}" | jq -r '.assets[]? | select(.name | test("^mullvad-browser-linux-x86_64-.*\\.tar\\.xz$")) | .name' | head -n1)"
@@ -88,7 +88,7 @@ jobs:
 
           if [ -z "${asset_name}" ] || [ "${asset_name}" = "null" ] || [ -z "${asset_url}" ] || [ "${asset_url}" = "null" ]; then
             echo "No Linux x86_64 tarball found in latest release"
-            exit 0
+            exit 1
           fi
 
           version="$(echo "${asset_name}" | sed -E 's/^mullvad-browser-linux-x86_64-(.+)\.tar\.xz$/\1/')"
